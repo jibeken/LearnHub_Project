@@ -26,6 +26,21 @@ class _HomePageState extends State<HomePage> {
   final GlobalKey<_StudentDashboardTabState> _studentHomeKey = GlobalKey();
   final GlobalKey<_CoursesTabState> _coursesTabKey = GlobalKey();
 
+  late final List<Widget> _tabs;
+
+  @override
+  void initState() {
+    super.initState();
+    final isTeacher = ApiService.isTeacher;
+    _tabs = [
+      isTeacher
+          ? _TeacherDashboardTab(key: _teacherHomeKey)
+          : _StudentDashboardTab(key: _studentHomeKey),
+      _CoursesTab(key: _coursesTabKey),
+      const _ProfileTab(),
+    ];
+  }
+
   void refreshAfterJoin() {
     _coursesTabKey.currentState?._refresh();
     _studentHomeKey.currentState?._refresh();
@@ -33,19 +48,9 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final isTeacher = ApiService.isTeacher;
     return Scaffold(
       backgroundColor: context.colors.bgSecondary,
-      body: IndexedStack(
-        index: _currentTab,
-        children: [
-          isTeacher
-              ? _TeacherDashboardTab(key: _teacherHomeKey)
-              : _StudentDashboardTab(key: _studentHomeKey),
-          _CoursesTab(key: _coursesTabKey),
-          const _ProfileTab(),
-        ],
-      ),
+      body: IndexedStack(index: _currentTab, children: _tabs),
       bottomNavigationBar: BottomNavBar(
         currentIndex: _currentTab,
         onTap: (i) => setState(() => _currentTab = i),
@@ -54,14 +59,7 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-//данные для дашборда студента
-class _StudentDashData {
-  final List<Course> courses;
-  final List<Post> deadlines;
-  const _StudentDashData({required this.courses, required this.deadlines});
-}
-
-//дашборд студента — курсы, дедлайны, просроченные
+// панель для студента
 class _StudentDashboardTab extends StatefulWidget {
   const _StudentDashboardTab({super.key});
   @override
@@ -77,16 +75,22 @@ class _StudentDashboardTabState extends State<_StudentDashboardTab> {
     _refresh();
   }
 
-  void _refresh() => setState(() => _dataFuture = _loadData());
+  void _refresh() {
+    setState(() {
+      _dataFuture = _loadData();
+    });
+  }
 
   Future<_StudentDashData> _loadData() async {
     final courses = await ApiService.getCourses();
     final allPosts = <Post>[];
     for (final course in courses) {
-      allPosts.addAll(await ApiService.getCourseFeed(course.id));
+      final posts = await ApiService.getCourseFeed(course.id);
+      allPosts.addAll(posts);
     }
-    final deadlines = allPosts.where((p) => p.isAssignment && p.dueDate != null).toList()
-      ..sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
+    final deadlines =
+        allPosts.where((p) => p.isAssignment && p.dueDate != null).toList()
+          ..sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
     return _StudentDashData(courses: courses, deadlines: deadlines);
   }
 
@@ -102,7 +106,8 @@ class _StudentDashboardTabState extends State<_StudentDashboardTab> {
             future: _dataFuture,
             builder: (context, snapshot) {
               final data = snapshot.data;
-              final loading = snapshot.connectionState == ConnectionState.waiting;
+              final loading =
+                  snapshot.connectionState == ConnectionState.waiting;
               return CustomScrollView(
                 slivers: [
                   _AppBar(title: 'LearnHub', showNotification: true),
@@ -112,30 +117,60 @@ class _StudentDashboardTabState extends State<_StudentDashboardTab> {
                       delegate: SliverChildListDelegate([
                         Text(
                           '${context.s.greeting}, ${user?.name.split(' ').first ?? ''}! 👋',
-                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: c.textPrimary, letterSpacing: -0.4),
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            color: c.textPrimary,
+                            letterSpacing: -0.4,
+                          ),
                         ),
                         const SizedBox(height: 4),
-                        Text(context.s.todaySummary, style: TextStyle(fontSize: 15, color: c.textSecondary)),
+                        Text(
+                          context.s.todaySummary,
+                          style: TextStyle(fontSize: 15, color: c.textSecondary),
+                        ),
                         const SizedBox(height: 20),
                         loading
                             ? _StatsShimmer()
-                            : _StatsRow(cards: [
-                                _StatData(Icons.menu_book_rounded, '${data?.courses.length ?? 0}', context.s.coursesCount, AppTheme.primary),
-                                _StatData(Icons.assignment_outlined, '${data?.deadlines.length ?? 0}', context.s.assignmentsCount, AppTheme.warning),
-                                _StatData(
-                                  Icons.warning_amber_rounded,
-                                  '${data?.deadlines.where((p) => p.dueDate!.isBefore(DateTime.now())).length ?? 0}',
-                                  context.s.overdueCount,
-                                  AppTheme.danger,
-                                ),
-                              ]),
+                            : _StatsRow(
+                                cards: [
+                                  _StatData(
+                                    Icons.menu_book_rounded,
+                                    '${data?.courses.length ?? 0}',
+                                    context.s.coursesCount,
+                                    AppTheme.primary,
+                                  ),
+                                  _StatData(
+                                    Icons.assignment_outlined,
+                                    '${data?.deadlines.length ?? 0}',
+                                    context.s.assignmentsCount,
+                                    AppTheme.warning,
+                                  ),
+                                  _StatData(
+                                    Icons.warning_amber_rounded,
+                                    '${data?.deadlines.where((p) => p.dueDate!.isBefore(DateTime.now())).length ?? 0}',
+                                    context.s.overdueCount,
+                                    AppTheme.danger,
+                                  ),
+                                ],
+                              ),
                         const SizedBox(height: 24),
                         Row(
                           children: [
-                            Text(context.s.upcomingDead, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: c.textPrimary)),
+                            Text(
+                              context.s.upcomingDead,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: c.textPrimary,
+                              ),
+                            ),
                             const Spacer(),
                             if (!loading && (data?.deadlines.isNotEmpty ?? false))
-                              Text('${data!.deadlines.length} ${context.s.total}', style: TextStyle(fontSize: 13, color: c.textTertiary)),
+                              Text(
+                                '${data!.deadlines.length} ${context.s.total}',
+                                style: TextStyle(fontSize: 13, color: c.textTertiary),
+                              ),
                           ],
                         ),
                         const SizedBox(height: 12),
@@ -160,21 +195,13 @@ class _StudentDashboardTabState extends State<_StudentDashboardTab> {
   }
 }
 
-//данные для дашборда учителя
-class _TeacherDashData {
+class _StudentDashData {
   final List<Course> courses;
-  final List<Submission> recentSubmissions;
-  final int totalStudents, totalAssignments, pendingCount;
-  const _TeacherDashData({
-    required this.courses,
-    required this.recentSubmissions,
-    required this.totalStudents,
-    required this.totalAssignments,
-    required this.pendingCount,
-  });
+  final List<Post> deadlines;
+  const _StudentDashData({required this.courses, required this.deadlines});
 }
 
-//дашборд учителя — курсы, студенты, непроверенные работы
+//панель учителя
 class _TeacherDashboardTab extends StatefulWidget {
   const _TeacherDashboardTab({super.key});
   @override
@@ -190,12 +217,17 @@ class _TeacherDashboardTabState extends State<_TeacherDashboardTab> {
     _refresh();
   }
 
-  void _refresh() => setState(() => _dataFuture = _loadData());
+  void _refresh() {
+    setState(() {
+      _dataFuture = _loadData();
+    });
+  }
 
   Future<_TeacherDashData> _loadData() async {
     final courses = await ApiService.getCourses();
     final submissions = await ApiService.getRecentSubmissions();
-    int totalStudents = 0, totalAssignments = 0;
+    int totalStudents = 0;
+    int totalAssignments = 0;
     for (final course in courses) {
       totalStudents += course.memberCount;
       final posts = await ApiService.getCourseFeed(course.id);
@@ -223,7 +255,8 @@ class _TeacherDashboardTabState extends State<_TeacherDashboardTab> {
             future: _dataFuture,
             builder: (context, snapshot) {
               final data = snapshot.data;
-              final loading = snapshot.connectionState == ConnectionState.waiting;
+              final loading =
+                  snapshot.connectionState == ConnectionState.waiting;
               return CustomScrollView(
                 slivers: [
                   _AppBar(
@@ -234,11 +267,23 @@ class _TeacherDashboardTabState extends State<_TeacherDashboardTab> {
                         padding: const EdgeInsets.only(right: 8),
                         child: TextButton.icon(
                           onPressed: () async {
-                            await Navigator.push(context, MaterialPageRoute(builder: (_) => const CreateCoursePage()));
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const CreateCoursePage(),
+                              ),
+                            );
                             _refresh();
                           },
                           icon: const Icon(Icons.add_rounded, size: 18, color: AppTheme.primary),
-                          label: Text(s.createCourse, style: const TextStyle(fontSize: 13, color: AppTheme.primary, fontWeight: FontWeight.w600)),
+                          label: Text(
+                            s.createCourse,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: AppTheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -249,20 +294,30 @@ class _TeacherDashboardTabState extends State<_TeacherDashboardTab> {
                       delegate: SliverChildListDelegate([
                         Text(
                           '${s.greeting}, ${user?.name.split(' ').first ?? ''}! 👋',
-                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: c.textPrimary, letterSpacing: -0.4),
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            color: c.textPrimary,
+                            letterSpacing: -0.4,
+                          ),
                         ),
                         const SizedBox(height: 4),
                         Text(s.todaySummary, style: TextStyle(fontSize: 15, color: c.textSecondary)),
                         const SizedBox(height: 20),
                         loading
                             ? _StatsShimmer()
-                            : _StatsRow(cards: [
-                                _StatData(Icons.menu_book_rounded, '${data?.courses.length ?? 0}', s.coursesCount, AppTheme.primary),
-                                _StatData(Icons.group_outlined, '${data?.totalStudents ?? 0}', s.totalStudents, AppTheme.success),
-                                _StatData(Icons.assignment_outlined, '${data?.pendingCount ?? 0}', s.pendingLabel, AppTheme.warning),
-                              ]),
+                            : _StatsRow(
+                                cards: [
+                                  _StatData(Icons.menu_book_rounded, '${data?.courses.length ?? 0}', s.coursesCount, AppTheme.primary),
+                                  _StatData(Icons.group_outlined, '${data?.totalStudents ?? 0}', s.totalStudents, AppTheme.success),
+                                  _StatData(Icons.assignment_outlined, '${data?.pendingCount ?? 0}', s.pendingLabel, AppTheme.warning),
+                                ],
+                              ),
                         const SizedBox(height: 24),
-                        Text(s.recentSubmissions, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: c.textPrimary)),
+                        Text(
+                          s.recentSubmissions,
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: c.textPrimary),
+                        ),
                         const SizedBox(height: 12),
                         if (loading) ...[
                           _DeadlineShimmer(),
@@ -285,7 +340,19 @@ class _TeacherDashboardTabState extends State<_TeacherDashboardTab> {
   }
 }
 
-//карточка недавно сданной работы
+class _TeacherDashData {
+  final List<Course> courses;
+  final List<Submission> recentSubmissions;
+  final int totalStudents, totalAssignments, pendingCount;
+  const _TeacherDashData({
+    required this.courses,
+    required this.recentSubmissions,
+    required this.totalStudents,
+    required this.totalAssignments,
+    required this.pendingCount,
+  });
+}
+
 class _SubmissionCard extends StatelessWidget {
   final Submission submission;
   const _SubmissionCard({required this.submission});
@@ -299,7 +366,11 @@ class _SubmissionCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: c.bgPrimary, borderRadius: BorderRadius.circular(14), border: Border.all(color: c.border)),
+      decoration: BoxDecoration(
+        color: c.bgPrimary,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: c.border),
+      ),
       child: Row(
         children: [
           Container(
@@ -313,16 +384,26 @@ class _SubmissionCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(submission.studentName, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.textPrimary)),
-                //имя файла показываем только если есть
+                Text(
+                  submission.studentName,
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.textPrimary),
+                ),
                 if (submission.fileName != null)
-                  Text(submission.fileName!, style: TextStyle(fontSize: 12, color: c.textTertiary), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(
+                    submission.fileName!,
+                    style: TextStyle(fontSize: 12, color: c.textTertiary),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
               ],
             ),
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
             child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
           ),
         ],
@@ -331,7 +412,6 @@ class _SubmissionCard extends StatelessWidget {
   }
 }
 
-//нет сданных работ
 class _EmptySubmissions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -339,12 +419,19 @@ class _EmptySubmissions extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 32),
       width: double.infinity,
-      decoration: BoxDecoration(color: c.bgPrimary, borderRadius: BorderRadius.circular(16), border: Border.all(color: c.border)),
+      decoration: BoxDecoration(
+        color: c.bgPrimary,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: c.border),
+      ),
       child: Column(
         children: [
           Icon(Icons.inbox_outlined, size: 40, color: c.textTertiary),
           const SizedBox(height: 10),
-          Text(context.s.noSubmissions, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: c.textPrimary)),
+          Text(
+            context.s.noSubmissions,
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: c.textPrimary),
+          ),
         ],
       ),
     );
@@ -356,7 +443,11 @@ class _AppBar extends StatelessWidget {
   final String title;
   final bool showNotification;
   final List<Widget> actions;
-  const _AppBar({required this.title, this.showNotification = false, this.actions = const []});
+  const _AppBar({
+    required this.title,
+    this.showNotification = false,
+    this.actions = const [],
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -366,7 +457,10 @@ class _AppBar extends StatelessWidget {
       backgroundColor: c.bgPrimary,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
-      title: Text(title, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: c.textPrimary, letterSpacing: -0.3)),
+      title: Text(
+        title,
+        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: c.textPrimary, letterSpacing: -0.3),
+      ),
       actions: [
         ...actions,
         if (showNotification)
@@ -383,7 +477,6 @@ class _AppBar extends StatelessWidget {
   }
 }
 
-//модель данных для одной статистической карточки
 class _StatData {
   final IconData icon;
   final String value, label;
@@ -391,7 +484,6 @@ class _StatData {
   const _StatData(this.icon, this.value, this.label, this.color);
 }
 
-//ряд из трёх статкарточек
 class _StatsRow extends StatelessWidget {
   final List<_StatData> cards;
   const _StatsRow({required this.cards});
@@ -399,17 +491,22 @@ class _StatsRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      children: cards.asMap().entries.map((e) => Expanded(
-        child: Container(
-          margin: EdgeInsets.only(left: e.key == 0 ? 0 : 12),
-          child: _StatCard(data: e.value),
-        ),
-      )).toList(),
+      children: cards
+          .asMap()
+          .entries
+          .map(
+            (e) => Expanded(
+              child: Container(
+                margin: EdgeInsets.only(left: e.key == 0 ? 0 : 12),
+                child: _StatCard(data: e.value),
+              ),
+            ),
+          )
+          .toList(),
     );
   }
 }
 
-//одна статкарточка — иконка, число, подпись
 class _StatCard extends StatelessWidget {
   final _StatData data;
   const _StatCard({required this.data});
@@ -419,26 +516,40 @@ class _StatCard extends StatelessWidget {
     final c = context.colors;
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-      decoration: BoxDecoration(color: c.bgPrimary, borderRadius: BorderRadius.circular(16), border: Border.all(color: c.border)),
+      decoration: BoxDecoration(
+        color: c.bgPrimary,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: c.border),
+      ),
       child: Column(
         children: [
           Container(
             width: 36,
             height: 36,
-            decoration: BoxDecoration(color: data.color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+            decoration: BoxDecoration(
+              color: data.color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
             child: Icon(data.icon, color: data.color, size: 18),
           ),
           const SizedBox(height: 8),
-          Text(data.value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: c.textPrimary)),
+          Text(
+            data.value,
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: c.textPrimary),
+          ),
           const SizedBox(height: 2),
-          Text(data.label, style: TextStyle(fontSize: 11, color: c.textSecondary, fontWeight: FontWeight.w500), textAlign: TextAlign.center),
+          Text(
+            data.label,
+            style: TextStyle(fontSize: 11, color: c.textSecondary, fontWeight: FontWeight.w500),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
   }
 }
 
-//карточка дедлайна
+//карточка дедлайна — цвет зависит от срочности
 class _DeadlineCard extends StatelessWidget {
   final Post post;
   const _DeadlineCard({required this.post});
@@ -453,8 +564,8 @@ class _DeadlineCard extends StatelessWidget {
     final isOverdue = due.isBefore(now);
     final daysLeft = due.difference(now).inDays;
 
-    final Color statusColor;
-    final String statusLabel;
+    Color statusColor;
+    String statusLabel;
     if (isOverdue) {
       statusColor = AppTheme.danger;
       statusLabel = context.s.overdue;
@@ -472,13 +583,20 @@ class _DeadlineCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: c.bgPrimary, borderRadius: BorderRadius.circular(14), border: Border.all(color: c.border)),
+      decoration: BoxDecoration(
+        color: c.bgPrimary,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: c.border),
+      ),
       child: Row(
         children: [
           Container(
             width: 42,
             height: 42,
-            decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+            decoration: BoxDecoration(
+              color: statusColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
             child: Icon(Icons.assignment_outlined, color: statusColor, size: 20),
           ),
           const SizedBox(width: 12),
@@ -486,7 +604,12 @@ class _DeadlineCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(post.title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis),
+                Text(
+                  post.title,
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.textPrimary),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 const SizedBox(height: 3),
                 Text('${_months[due.month]} ${due.day}', style: TextStyle(fontSize: 12, color: c.textSecondary)),
               ],
@@ -494,8 +617,14 @@ class _DeadlineCard extends StatelessWidget {
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-            decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-            child: Text(statusLabel, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: statusColor)),
+            decoration: BoxDecoration(
+              color: statusColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              statusLabel,
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: statusColor),
+            ),
           ),
         ],
       ),
@@ -503,7 +632,6 @@ class _DeadlineCard extends StatelessWidget {
   }
 }
 
-//нет дедлайнов
 class _EmptyDeadlines extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -511,12 +639,19 @@ class _EmptyDeadlines extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 32),
       width: double.infinity,
-      decoration: BoxDecoration(color: c.bgPrimary, borderRadius: BorderRadius.circular(16), border: Border.all(color: c.border)),
+      decoration: BoxDecoration(
+        color: c.bgPrimary,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: c.border),
+      ),
       child: Column(
         children: [
           const Icon(Icons.check_circle_outline_rounded, size: 40, color: AppTheme.success),
           const SizedBox(height: 10),
-          Text(context.s.noDeadlines, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: c.textPrimary)),
+          Text(
+            context.s.noDeadlines,
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: c.textPrimary),
+          ),
           const SizedBox(height: 4),
           Text(context.s.allDone, style: TextStyle(fontSize: 13, color: c.textSecondary)),
         ],
@@ -525,30 +660,32 @@ class _EmptyDeadlines extends StatelessWidget {
   }
 }
 
-//шиммер для статкарточек пока грузятся данные
 class _StatsShimmer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     return Row(
-      children: List.generate(3, (i) => Expanded(
-        child: Container(
-          margin: EdgeInsets.only(left: i == 0 ? 0 : 12),
-          height: 96,
-          decoration: BoxDecoration(color: c.bgTertiary, borderRadius: BorderRadius.circular(16)),
+      children: List.generate(
+        3,
+        (i) => Expanded(
+          child: Container(
+            margin: EdgeInsets.only(left: i == 0 ? 0 : 12),
+            height: 96,
+            decoration: BoxDecoration(color: c.bgTertiary, borderRadius: BorderRadius.circular(16)),
+          ),
         ),
-      )),
+      ),
     );
   }
 }
 
-//шиммер для карточки дедлайна
 class _DeadlineShimmer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Container(
       height: 64,
-      decoration: BoxDecoration(color: context.colors.bgTertiary, borderRadius: BorderRadius.circular(14)),
+      decoration: BoxDecoration(color: c.bgTertiary, borderRadius: BorderRadius.circular(14)),
     );
   }
 }
@@ -569,7 +706,11 @@ class _CoursesTabState extends State<_CoursesTab> {
     _refresh();
   }
 
-  void _refresh() => setState(() => _coursesFuture = ApiService.getCourses());
+  void _refresh() {
+    setState(() {
+      _coursesFuture = ApiService.getCourses();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -587,23 +728,36 @@ class _CoursesTabState extends State<_CoursesTab> {
                 backgroundColor: c.bgPrimary,
                 surfaceTintColor: Colors.transparent,
                 elevation: 0,
-                title: Text(s.myCourses, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: c.textPrimary, letterSpacing: -0.3)),
+                title: Text(
+                  s.myCourses,
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: c.textPrimary, letterSpacing: -0.3),
+                ),
                 actions: [
-                  IconButton(
-                    icon: const Icon(Icons.add_rounded, color: AppTheme.primary),
-                    onPressed: () async {
-                      if (isTeacher) {
-                        await Navigator.push(context, MaterialPageRoute(builder: (_) => const CreateCoursePage()));
+                  if (isTeacher)
+                    IconButton(
+                      icon: const Icon(Icons.add_rounded, color: AppTheme.primary),
+                      onPressed: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const CreateCoursePage()),
+                        );
                         _refresh();
-                      } else {
-                        final joined = await Navigator.push(context, MaterialPageRoute(builder: (_) => const JoinCoursePage()));
+                      },
+                    )
+                  else
+                    IconButton(
+                      icon: const Icon(Icons.add_rounded, color: AppTheme.primary),
+                      onPressed: () async {
+                        final joined = await Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const JoinCoursePage()),
+                        );
                         if (joined == true && context.mounted) {
                           _refresh();
                           context.findAncestorStateOfType<_HomePageState>()?.refreshAfterJoin();
                         }
-                      }
-                    },
-                  ),
+                      },
+                    ),
                 ],
                 bottom: PreferredSize(
                   preferredSize: const Size.fromHeight(1),
@@ -635,7 +789,10 @@ class _CoursesTabState extends State<_CoursesTab> {
                           course: courses[index],
                           colorIndex: index,
                           onTap: () async {
-                            await Navigator.push(context, MaterialPageRoute(builder: (_) => CoursePage(course: courses[index])));
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => CoursePage(course: courses[index])),
+                            );
                             _refresh();
                           },
                         ),
@@ -653,7 +810,6 @@ class _CoursesTabState extends State<_CoursesTab> {
   }
 }
 
-//пустое состояние вкладки курсов
 class _EmptyCourses extends StatelessWidget {
   final bool isTeacher;
   const _EmptyCourses({required this.isTeacher});
@@ -669,9 +825,16 @@ class _EmptyCourses extends StatelessWidget {
         children: [
           Icon(Icons.menu_book_outlined, size: 56, color: c.textTertiary),
           const SizedBox(height: 16),
-          Text(isTeacher ? s.createCourse : s.joinTitle, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: c.textPrimary)),
+          Text(
+            isTeacher ? s.createCourse : s.joinTitle,
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: c.textPrimary),
+          ),
           const SizedBox(height: 6),
-          Text(isTeacher ? s.courseDesc : s.joinSub, style: TextStyle(fontSize: 14, color: c.textSecondary), textAlign: TextAlign.center),
+          Text(
+            isTeacher ? s.courseDesc : s.joinSub,
+            style: TextStyle(fontSize: 14, color: c.textSecondary),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
@@ -686,6 +849,7 @@ class _ProfileTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = ApiService.currentUser;
     final isTeacher = ApiService.isTeacher;
+
     return ListenableBuilder(
       listenable: Listenable.merge([themeNotifier, languageNotifier]),
       builder: (context, _) {
@@ -698,7 +862,10 @@ class _ProfileTab extends StatelessWidget {
                 backgroundColor: c.bgPrimary,
                 surfaceTintColor: Colors.transparent,
                 elevation: 0,
-                title: Text(s.profileTitle, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: c.textPrimary)),
+                title: Text(
+                  s.profileTitle,
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: c.textPrimary),
+                ),
                 bottom: PreferredSize(
                   preferredSize: const Size.fromHeight(1),
                   child: Container(height: 1, color: c.border),
@@ -717,7 +884,10 @@ class _ProfileTab extends StatelessWidget {
                         child: const Icon(Icons.person_rounded, size: 40, color: AppTheme.primary),
                       ),
                       const SizedBox(height: 14),
-                      Text(user?.name ?? '', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: c.textPrimary)),
+                      Text(
+                        user?.name ?? '',
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: c.textPrimary),
+                      ),
                       const SizedBox(height: 4),
                       Text(user?.email ?? '', style: TextStyle(fontSize: 14, color: c.textSecondary)),
                       const SizedBox(height: 8),
@@ -733,7 +903,10 @@ class _ProfileTab extends StatelessWidget {
                       _ProfileAction(
                         icon: Icons.settings_outlined,
                         label: s.settings,
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage())),
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const SettingsPage()),
+                        ),
                       ),
                       _ProfileAction(
                         icon: Icons.logout_rounded,
@@ -758,7 +931,6 @@ class _ProfileTab extends StatelessWidget {
   }
 }
 
-//кнопка-действие в профиле
 class _ProfileAction extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -778,7 +950,11 @@ class _ProfileAction extends StatelessWidget {
     final textColor = color == AppTheme.textPrimary ? c.textPrimary : color;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(color: c.bgPrimary, borderRadius: BorderRadius.circular(12), border: Border.all(color: c.border)),
+      decoration: BoxDecoration(
+        color: c.bgPrimary,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: c.border),
+      ),
       child: ListTile(
         leading: Icon(icon, color: textColor, size: 20),
         title: Text(label, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: textColor)),
